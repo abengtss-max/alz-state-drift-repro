@@ -37,14 +37,72 @@ If the file exists only locally and is not committed, the pipeline cannot use it
 
 1. **Cancel** all in-progress runs for this environment in GitHub Actions.
 2. **Run recovery from ACI network path** (not from local machine).
-3. **Login** in container with identity:
+3. **Access** the ACI container and **execute** commands there.
+
+## 3A. Container Instance operations (exact steps)
+
+Run these from your own terminal first (outside container):
+
+1. **Login** and **set subscription**:
+
+```bash
+az login
+az account set --subscription "<subscription-id>"
+```
+
+2. **Find** your container groups (if needed):
+
+```bash
+az container list --resource-group "<aci-rg>" --query "[].name" -o table
+```
+
+3. **List** containers in the selected group (get exact container name):
+
+```bash
+az container show \
+  --resource-group "<aci-rg>" \
+  --name "<aci-container-group>" \
+  --query "containers[].name" -o table
+```
+
+4. **Open shell** in the runner container:
+
+```bash
+az container exec \
+  --resource-group "<aci-rg>" \
+  --name "<aci-container-group>" \
+  --container-name "<aci-container-name>" \
+  --exec-command "/bin/sh"
+```
+
+If `/bin/sh` fails, try:
+
+```bash
+az container exec \
+  --resource-group "<aci-rg>" \
+  --name "<aci-container-group>" \
+  --container-name "<aci-container-name>" \
+  --exec-command "bash"
+```
+
+Now run the recovery commands from inside this shell.
+
+5. **Login** inside container (prefer managed identity):
 
 ```bash
 az login --identity
 az account set --subscription "<subscription-id>"
 ```
 
-4. **Break state lease**:
+6. **Verify** private endpoint DNS resolution from inside container:
+
+```bash
+nslookup <storage-account>.blob.core.windows.net
+```
+
+Expected: private IP range (10.x/172.16-31.x/192.168.x).
+
+7. **Break state lease**:
 
 ```bash
 az storage blob lease break \
@@ -54,7 +112,7 @@ az storage blob lease break \
   --blob-name "terraform.tfstate"
 ```
 
-5. **Re-init backend** with same values as workflow:
+8. **Re-init backend** with same values as workflow:
 
 ```bash
 terraform init \
@@ -65,20 +123,20 @@ terraform init \
   -backend-config="use_azuread_auth=true"
 ```
 
-6. If first failed run produced file, **push recovered state**:
+9. If first failed run produced file, **push recovered state**:
 
 ```bash
 terraform state push errored.tfstate
 ```
 
-7. **Run** plan, then apply once:
+10. **Run** plan, then apply once:
 
 ```bash
 terraform plan -input=false
 terraform apply -input=false -auto-approve
 ```
 
-8. If errored.tfstate is missing and you get RoleAssignmentExists, **import** existing resources from error IDs, then run plan/apply again:
+11. If errored.tfstate is missing and you get RoleAssignmentExists, **import** existing resources from error IDs, then run plan/apply again:
 
 ```bash
 terraform import 'azurerm_role_assignment.landing_zones_policy_mi["<key>"]' '/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Authorization/roleAssignments/<guid>'
