@@ -33,6 +33,27 @@ You must include the workaround in the repository itself.
 
 If the file exists only locally and is not committed, the pipeline cannot use it.
 
+### 2A. Exact GitHub Web UI upload steps (your screenshot)
+
+Use this when you downloaded the fix file locally and changed the landing zone name.
+
+1. **Open** the target folder in GitHub repo (example: `alz-mgmt/`).
+2. **Click** `Add file` -> `Upload files`.
+3. **Drag** your edited file into the upload area.
+4. In `Propose changes` message, **enter** a short commit message, for example:
+  - `Add fix.landing-zones-policy-mi-rbac.tf with wrong landing zone name for repro`
+5. In the branch options (because main is protected):
+  - **Select** `Create a new branch for this commit and start a pull request`.
+  - **Keep** generated branch name or **rename** it (example: `repro/wrong-lz-name`).
+6. **Click** `Propose changes`.
+7. On the next PR page, **click** `Create pull request`.
+8. After checks/policies pass, **click** `Merge pull request`.
+9. **Click** `Confirm merge`.
+
+Now the file is in the repo and can be used by the pipeline.
+
+Repeat the same flow when you upload the corrected file later (new branch + new PR + merge).
+
 ## 3. Recover after reproduction (end-to-end fix)
 
 1. **Cancel** all in-progress runs for this environment in GitHub Actions.
