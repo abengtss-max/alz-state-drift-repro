@@ -7,20 +7,23 @@
    - Because `main` is protected, **select** `Create a new branch for this commit and start a pull request`.
   - **Click** `Propose changes` -> **Create pull request** -> **Merge pull request** -> **Confirm merge**.
 
-3. **Run** the workflow from **Actions**: open **02 Azure Landing Zones Continuous Delivery** -> **Run workflow**.
+3. On the PR page, **wait** for all required checks to be green, then **click** `Squash and merge` -> **Confirm squash and merge**.
+  - If a check is stuck, **open** the check details and **click** `Re-run jobs`, then merge when green.
 
-4. When apply is actively creating resources, **click** `Cancel workflow`.
+4. **Run** the workflow from **Actions**: open **02 Azure Landing Zones Continuous Delivery** -> **Run workflow**.
 
-5. **Upload** the corrected workaround file (correct landing zone name) using the same protected-branch flow:
+5. When apply is actively creating resources, **click** `Cancel workflow`.
+
+6. **Upload** the corrected workaround file (correct landing zone name) using the same protected-branch flow:
   - **Add file** -> **Upload files** -> **Propose changes** -> **Create pull request** -> **Merge pull request** -> **Confirm merge**.
 
-6. **Run** the workflow again and **confirm** reproduction by checking apply logs for:
+7. **Run** the workflow again and **confirm** reproduction by checking apply logs for:
    - `Failed to persist state to backend` or `LeaseIdMissing` (412), and/or
    - `RoleAssignmentExists` (409).
 
-7. **Cancel** all in-progress runs for this environment in GitHub Actions.
+8. **Cancel** all in-progress runs for this environment in GitHub Actions.
 
-8. **Access** the ACI runner container and **break** the state lease:
+9. **Access** the ACI runner container and **break** the state lease:
 
 ```bash
 az login
@@ -40,7 +43,7 @@ az storage blob lease break \
   --blob-name "terraform.tfstate"
 ```
 
-9. **Re-init** backend and **recover** state:
+10. **Re-init** backend, **recover** state, then **run** validation and final apply:
 
 ```bash
 terraform init \
@@ -51,11 +54,6 @@ terraform init \
   -backend-config="use_azuread_auth=true"
 
 terraform state push errored.tfstate
-```
-
-10. **Run** validation and final apply:
-
-```bash
 terraform plan -input=false
 terraform apply -input=false -auto-approve
 ```
