@@ -1,0 +1,118 @@
+name: Terraform State Recovery
+
+on:
+  workflow_dispatch:
+    inputs:
+      terraform_root:
+        description: "Terraform root folder"
+        required: true
+        default: "."
+        type: string
+      backend_resource_group:
+        description: "Backend resource group"
+        required: true
+        default: "rg-alz-mgmt-state-swedencentral-001"
+        type: string
+      backend_storage_account:
+        description: "Backend storage account"
+        required: true
+        default: "stoalzmgmswe001nnif"
+        type: string
+      backend_container:
+        description: "Backend container"
+        required: true
+        default: "mgmt-tfstate"
+        type: string
+      backend_key:
+        description: "State blob key"
+        required: true
+        default: "terraform.tfstate"
+        type: string
+      push_errored_state:
+        description: "Push errored.tfstate if present"
+        required: true
+        default: false
+        type: boolean
+      errored_state_path:
+        description: "Path to errored state file"
+        required: true
+        default: "errored.tfstate"
+        type: string
+      run_apply:
+        description: "Run terraform apply after plan"
+        required: true
+        default: false
+        type: boolean
+
+jobs:
+  recover:
+    name: Recover Terraform State
+    runs-on: self-hosted
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      ARM_USE_AZUREAD: true
+      ARM_USE_OIDC: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Break backend blob lease
+        shell: bash
+        run: |
+          set -euo pipefail
+          az storage blob lease break \
+            --auth-mode login \
+            --account-name "${{ inputs.backend_storage_account }}" \
+            --container-name "${{ inputs.backend_container }}" \
+            --blob-name "${{ inputs.backend_key }}"
+
+      - name: Terraform Init
+        shell: bash
+        run: |
+          set -euo pipefail
+          terraform -chdir="${{ inputs.terraform_root }}" init \
+            -backend-config="resource_group_name=${{ inputs.backend_resource_group }}" \
+            -backend-config="storage_account_name=${{ inputs.backend_storage_account }}" \
+            -backend-config="container_name=${{ inputs.backend_container }}" \
+            -backend-config="key=${{ inputs.backend_key }}" \
+            -backend-config="use_azuread_auth=true"
+
+      - name: Push errored state if selected
+        if: ${{ inputs.push_errored_state }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE="${{ inputs.errored_state_path }}"
+          if [ ! -f "${{ inputs.terraform_root }}/${FILE}" ]; then
+            echo "Expected state file not found: ${{ inputs.terraform_root }}/${FILE}"
+            exit 1
+          fi
+          terraform -chdir="${{ inputs.terraform_root }}" state push "${FILE}"
+
+      - name: Terraform Plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          terraform -chdir="${{ inputs.terraform_root }}" plan -input=false
+
+      - name: Terraform Apply
+        if: ${{ inputs.run_apply }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          terraform -chdir="${{ inputs.terraform_root }}" apply -input=false -auto-approve
