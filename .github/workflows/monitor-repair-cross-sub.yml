@@ -1,0 +1,83 @@
+name: Monitor Repair Cross-Subscription
+
+on:
+  workflow_dispatch:
+    inputs:
+      vm_subscription_id:
+        description: "VM subscription ID"
+        required: true
+        default: "08436ef1-79fc-4f99-a8c3-1ea611f64196"
+        type: string
+      management_subscription_id:
+        description: "Management subscription ID (DCR/LAW)"
+        required: true
+        default: "b9794400-1ef6-405c-be7f-2e24ba8bfa1b"
+        type: string
+      vm_resource_group:
+        description: "VM resource group"
+        required: true
+        type: string
+      vm_name:
+        description: "VM name"
+        required: true
+        type: string
+      dcr_resource_group:
+        description: "DCR resource group"
+        required: true
+        type: string
+      dcr_name:
+        description: "DCR name"
+        required: true
+        type: string
+      workspace_resource_group:
+        description: "Log Analytics workspace resource group (optional)"
+        required: false
+        default: ""
+        type: string
+      workspace_name:
+        description: "Log Analytics workspace name (optional)"
+        required: false
+        default: ""
+        type: string
+      create_association:
+        description: "Create DCR association if missing"
+        required: true
+        default: true
+        type: boolean
+
+jobs:
+  repair:
+    runs-on: self-hosted
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ inputs.management_subscription_id }}
+
+      - name: Run monitor repair script
+        shell: pwsh
+        run: |
+          $create = ""
+          if ("${{ inputs.create_association }}" -eq "true") {
+            $create = "-CreateAssociation"
+          }
+
+          ./scripts/monitor-repair-cross-sub.ps1 \
+            -VmSubscriptionId "${{ inputs.vm_subscription_id }}" \
+            -ManagementSubscriptionId "${{ inputs.management_subscription_id }}" \
+            -VmResourceGroup "${{ inputs.vm_resource_group }}" \
+            -VmName "${{ inputs.vm_name }}" \
+            -DcrResourceGroup "${{ inputs.dcr_resource_group }}" \
+            -DcrName "${{ inputs.dcr_name }}" \
+            -WorkspaceResourceGroup "${{ inputs.workspace_resource_group }}" \
+            -WorkspaceName "${{ inputs.workspace_name }}" \
+            $create
