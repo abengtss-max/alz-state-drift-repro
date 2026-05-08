@@ -35,14 +35,27 @@ $vmLocation = $vm.location
 Write-Host "VM ID: $vmId"
 Write-Host "VM Location: $vmLocation"
 
+$vmStatusCodes = az vm get-instance-view --subscription "$VmSubscriptionId" --resource-group "$VmResourceGroup" --name "$VmName" --query "instanceView.statuses[].code" -o tsv
+$powerState = ($vmStatusCodes | Select-String "^PowerState/").Line
+if ($powerState) {
+  Write-Host "VM Power State: $powerState"
+  if ($powerState -ne "PowerState/running") {
+    Write-Warning "VM is not running. No Heartbeat/InsightsMetrics ingestion will occur while VM is stopped/deallocated."
+  }
+}
+
 Write-Host "[2/7] Checking Azure Monitor Agent extensions"
 $extensions = Invoke-AzJson "az vm extension list --subscription `"$VmSubscriptionId`" --resource-group `"$VmResourceGroup`" --vm-name `"$VmName`" -o json"
-$ama = @($extensions | Where-Object { $_.type -in @('AzureMonitorWindowsAgent', 'AzureMonitorLinuxAgent') })
+$ama = @($extensions | Where-Object {
+  $_.name -in @('AzureMonitorWindowsAgent', 'AzureMonitorLinuxAgent') -or
+  $_.type -in @('AzureMonitorWindowsAgent', 'AzureMonitorLinuxAgent')
+})
 if ($ama.Count -eq 0) {
   Write-Warning "No Azure Monitor Agent extension found on VM."
 } else {
   $ama | ForEach-Object {
-    Write-Host ("AMA Extension: {0} | Publisher: {1} | ProvisioningState: {2}" -f $_.type, $_.publisher, $_.provisioningState)
+    $extName = if ($_.name) { $_.name } else { $_.type }
+    Write-Host ("AMA Extension: {0} | Publisher: {1} | ProvisioningState: {2}" -f $extName, $_.publisher, $_.provisioningState)
   }
 }
 
